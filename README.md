@@ -1,155 +1,164 @@
-# 🚀 Chatten
+# Agentic Document Intelligence: Citation-Grounded RAG on Databricks
 
-RAG with sources, built with **Dash**, **FastAPI**, and the **Databricks** platform.
+A retrieval-augmented chat assistant that answers questions from a PDF document corpus and **shows its sources**. Each answer links to the original PDF, which opens in a built-in viewer with the relevant passage highlighted. Agentic Document Intelligence runs end to end on Databricks, using Mosaic AI Vector Search, Model Serving, and Databricks Apps.
 
----
+## Features
 
-## 💫 Showcase
+- **Source-grounded answers.** Every response cites the documents it used.
+- **In-app PDF viewer.** Click a source to open the PDF at the right page, with the matching text highlighted.
+- **Tool-calling agent.** A LangGraph agent decides when to call the vector-search retriever.
+- **Automated RAG pipeline.** A three-step Databricks job loads, indexes, and deploys everything.
+- **Managed vector search.** A Delta Sync index with `databricks-gte-large-en` embeddings stays in sync with the source table.
+- **Model serving.** The agent is logged with MLflow, registered in Unity Catalog, and deployed as a serving endpoint.
+- **Custom chat UI.** A React chat component, wrapped as a Dash component and served alongside FastAPI.
+- **One-command deployment** with Databricks Asset Bundles.
 
-Here is an example of the app in action:
+## Architecture
 
-<div style="text-align: center;">
-  <img src="assets/showcase.gif" alt="chatten" style="max-width: 800px; height: auto;">
-</div>
-
-
-## 🛠 Developer Setup
-
-To install the project, ensure you have the following dependencies:
-
-- 📦 [uv](https://docs.astral.sh/uv/): for managing the project
-- 🚀 [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html): for deploying the app
-- 🌐 [Node.js](https://nodejs.org/en/): for building the UI
-
-### 📥 Installation Steps
-
-1. Clone the repo:
-
-   ```bash
-   git clone <repo-url>
-   ```
-
-2. Run sync:
-
-   ```bash
-   uv sync --all-packages
-   ```
-
-3. Configure environment variables in the `.env` file:
-
-   ```bash
-   # Name of your Databricks profile
-   CHATTEN_PROFILE=...
-   
-   # Optionally, you can include any bundle or Chatten variables:
-   CHATTEN_CATALOG=...
-   
-   # Optionally, by check default values in databricks.yml
-   BUNDLE_VAR_vsi_endpoint=...
-   ```
-
----
-
-## 🏗 Development
-
-1. Start the UI watcher in one terminal:
-
-   ```bash
-   cd packages/chatten_ui && npm run watch
-   ```
-
-2. Run the server in another terminal:
-
-   ```bash
-   uvicorn chatten_app.app:app --reload
-   ```
-
----
-
-## 🚀 Deployment
-
-1. Authenticate with Databricks:
-
-   ```bash
-   databricks auth login -p <profile-name>
-   ```
-
-2. Deploy the app:
-
-   ```bash
-   # See Makefile for additional variables
-   make deploy profile=fe-az-ws catalog=<catalog-name>
-   ```
-
-3. Run the RAG workflow:
-
-   ```bash
-   # See Makefile for additional variables
-   make run-rag profile=fe-az-ws catalog=<catalog-name>
-   ```
-
-4. Grant app principal access to the Volume.
-5. Run the app:
-
-   ```bash
-   make run-app profile=fe-az-ws catalog=<catalog-name>
-   ```
-
-6. Open the app from **Databricks Workspace** 🎉
-
----
-
-## 🤖 Agent Serving Endpoint Response Parsing
-
-Check the [`api_app`](packages/chatten_app/chatten_app/api_app.py) source code for details on how the agent serving endpoint response is parsed.
-
-Specifically, the `/chat` API endpoint handles:
-- Parsing responses
-- Sending messages to the chat interface
-
----
-
-## 🏛 App Implementation Details
-
-The implementation consists of a **FastAPI** backend with two sub-apps:
-
-1. **Dash app (`/` route)**: Uses a custom component to render the chat UI.
-2. **FastAPI app (`/api` route)**: Provides API endpoints for the chat.
-
-The chat is implemented as a **custom Dash component**, which is a React-based UI element that communicates with the FastAPI backend.
-
-The `/api` app interacts with the **Databricks Serving Endpoint** to handle chat requests and responses. Another route is responsible for serving PDF files from **Databricks Volume**.
-
----
-
-## 📂 Code Structure
-
-```
-📦 chatten  # Main package (FastAPI + Dash app)
- ┣ 📂 packages/chatten_ui  # Dash UI & custom chat component
- ┣ 📂 packages/chatten_rag  # RAG workflow implementation
- ┣ 📂 packages/chatten_app  # FastAPI & Dash apps
- ┣ 📂 src/chatten  # Common config & utilities
- ┣ 📂 src/chatten/app.py  # Main entry point
+```text
+                ┌──────────────── RAG pipeline (Databricks Job) ───────────────┐
+                │                                                              │
+  PDF docs ──► loader ──► Delta table (chunks) ──► indexer ──► Vector Search   │
+                │          pypdf + text splitter        Delta Sync index        │
+                │                                       (gte-large-en)         │
+                │                                              │               │
+                │                              driver ◄────────┘               │
+                │           LangGraph agent → MLflow → Unity Catalog → Serving │
+                └──────────────────────────────────────────────────────────────┘
+                                                               │
+                ┌──────────────── Databricks App ──────────────┼───────────────┐
+                │                                              ▼               │
+  User ──► Dash UI (React chat + PDF viewer) ──► FastAPI /api ──► Agent        │
+                │          ▲                            │       endpoint       │
+                │          └── PDF + highlighted page ◄─┘ (from UC Volume)     │
+                └──────────────────────────────────────────────────────────────┘
 ```
 
----
+## Tech Stack
 
-## 🏗 Technologies Used
+| Layer | Technology |
+|---|---|
+| Platform | Databricks Apps, Asset Bundles, Unity Catalog, Volumes |
+| LLM | `databricks-meta-llama-3-3-70b-instruct` (Model Serving) |
+| Embeddings | `databricks-gte-large-en` |
+| Vector store | Mosaic AI Vector Search (Delta Sync index) |
+| Agent | LangGraph, `databricks-langchain`, MLflow, `databricks-agents` |
+| Data processing | PySpark, pypdf, LangChain text splitters |
+| Backend | FastAPI, Uvicorn |
+| Frontend | Dash, React, TypeScript, Tailwind CSS, react-pdf, Fuse.js |
+| Text matching | RapidFuzz |
+| Tooling | uv, Ruff, Node.js |
 
-### 🔥 Core Platform
-- [Databricks](https://databricks.com/)
-  - [Apps](https://www.databricks.com/product/databricks-apps) - App serving
-  - [Asset Bundles](https://docs.databricks.com/en/dev-tools/bundles/index.html) - Deployment
-  - [Mosaic AI Model Serving](https://docs.databricks.com/en/machine-learning/model-serving/index.html) - Model serving
-  - [Mosaic AI Vector Search](https://docs.databricks.com/en/generative-ai/vector-search.html) - Vector search
+## RAG Pipeline
 
-### 🏗 Frameworks & Libraries
-- 🖥 [Dash](https://dash.plotly.com/) - UI framework
-- ⚡ [FastAPI](https://fastapi.tiangolo.com/) - Backend API
-- 🎨 [Tailwind CSS](https://tailwindcss.com/) - Styling
-- 📄 [react-pdf](https://github.com/wojtekmaj/react-pdf) - PDF rendering
-- 🔍 [Fuse.js](https://www.fusejs.io/) - Client-side fuzzy search
-- 📜 [pypdf](https://pypdf.readthedocs.io/en/stable/) - Server-side PDF text extraction
-- ⚡ [RapidFuzz](https://pypi.org/project/RapidFuzz/) - Fuzzy string matching
-- 📦 [uv](https://docs.astral.sh/uv/) - Dependency management
+The `chatten_rag` job runs three tasks in order:
+
+| Task | What it does |
+|---|---|
+| **loader** | Downloads sample PDF documentation into a Unity Catalog Volume, extracts the text with pypdf, splits it into chunks, and writes them to a Delta table |
+| **indexer** | Creates a Delta Sync Vector Search index on the chunks table and syncs it |
+| **driver** | Builds the LangGraph agent with a retriever tool (top 3 results), logs it with MLflow, registers it in Unity Catalog, and deploys it to a serving endpoint |
+
+## API
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/chat` | Sends a message to the agent and returns the answer with its sources |
+| `GET` | `/api/files` | Streams a source PDF from the Volume |
+| `POST` | `/api/files/relevant_page` | Finds the page that best matches a cited passage |
+
+## Prerequisites
+
+- A Databricks workspace with **Unity Catalog**, **Model Serving**, **Vector Search**, and **Databricks Apps** enabled
+- [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html)
+- [uv](https://docs.astral.sh/uv/)
+- [Node.js](https://nodejs.org/) (to build the UI)
+- Python 3.10
+
+## Setup
+
+**1. Clone and install**
+
+```bash
+git clone https://github.com/zaynnmotiwala/agentic-document-intelligence.git
+cd agentic-document-intelligence
+uv sync --all-packages
+```
+
+**2. Configure the environment.** Create a `.env` file in the project root:
+
+```env
+CHATTEN_PROFILE=<your-databricks-profile>
+CHATTEN_CATALOG=<your-catalog>
+
+# Optional: override bundle variables (see databricks.yml for defaults)
+BUNDLE_VAR_vsi_endpoint=<your-vector-search-endpoint>
+```
+
+**3. Authenticate with Databricks**
+
+```bash
+databricks auth login -p <profile-name>
+```
+
+## Deployment
+
+```bash
+# 1. Build and deploy the app and the RAG job
+make deploy profile=<profile-name> catalog=<catalog-name>
+
+# 2. Run the RAG pipeline (loader → indexer → driver)
+make run-rag profile=<profile-name> catalog=<catalog-name>
+
+# 3. Grant the app's service principal read access to the Volume
+
+# 4. Start the app
+make run-app profile=<profile-name> catalog=<catalog-name>
+```
+
+Then open the app from **Compute → Apps** in your Databricks workspace.
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `catalog` | none (required) | Unity Catalog name |
+| `db` | `chatten` | Schema name |
+| `vsi_endpoint` | `dbdemos_vs_endpoint` | Vector Search endpoint |
+| `agent_serving_endpoint` | `chatten_agent` | Agent serving endpoint name |
+
+## Local Development
+
+Run these in two terminals:
+
+```bash
+# Terminal 1: rebuild the UI component on change
+cd packages/chatten_ui && npm run watch
+
+# Terminal 2: run the server with hot reload
+uvicorn chatten_app.app:app --reload
+```
+
+## Project Structure
+
+```text
+├── packages/
+│   ├── chatten_app/     # FastAPI backend and Dash app (chat API, PDF serving)
+│   ├── chatten_rag/     # RAG pipeline: loader, indexer, driver, and the agent
+│   └── chatten_ui/      # React chat and PDF viewer, packaged as a Dash component
+├── src/chatten/         # Shared configuration (pydantic-settings)
+├── scripts/             # Cleanup utilities
+├── databricks.yml       # Asset Bundle: app and job definitions
+├── Makefile             # Build, deploy, and run commands
+└── pyproject.toml       # uv workspace
+```
+
+## Customization
+
+- **Use your own documents.** Upload PDFs to the Volume's `raw_docs` folder and run the pipeline again.
+- **Change the model.** Set `chat_endpoint` in `src/chatten/config.py` to any Databricks serving endpoint.
+- **Change the assistant's behavior.** Edit `PROMPT` in `src/chatten/config.py`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
